@@ -9,7 +9,7 @@ library(plotly)
 
 
 
-#test
+
 
 ui <- dashboardPage(
   dashboardHeader(title = "RNA visualization",
@@ -22,7 +22,8 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu( ##Le texte ne dépasse pas de la sidebar.
 
-      shinyDirButton("dir", 'Select a folder', 'Please select a folder', FALSE),
+      shinyDirButton("dir", 'Select a folder', 'Please select a folder',
+                     icon=icon(name="", class="fa-regular fa-folder-open")),
       
       verbatimTextOutput("dir", placeholder = TRUE),
       
@@ -47,15 +48,22 @@ ui <- dashboardPage(
      br(),
      
      actionButton("update_df",
-                  "Update DataTable"),
+                  "Update",
+                  icon=icon(name="", class="fa-solid fa-arrows-rotate")),
      actionButton("save_df",
-                  "Save DataTable")
+                  "Download DataTable",
+                  icon = icon(name="", class="fa-solid fa-download"))
     ) #sidebarMenu
   ), #dashboardSidebar
   
   dashboardBody(
     fluidRow(
-      tabsetPanel(tabPanel("Global statistics"),
+      tabsetPanel(tabPanel("Global statistics",
+                           tabBox(
+                             title = "First tabBox",
+                             # The id lets us use input$tabset1 on the server to find the current tab
+                             id = "tabset1", height = "250px"
+                           )),
                   tabPanel("mRNA statistics",
       tabsetPanel(
         title = NULL,
@@ -82,7 +90,20 @@ ui <- dashboardPage(
         tabPanel("PolyA distribution",
                  h4("PolyA length distribution"),
                  plotOutput("plot_4")
-                 )
+                 ),
+        
+        tabPanel("PolyA distribution 2",
+                 h4("Mean PolyA length per Barcode"),
+                 plotOutput("plot_5")
+                 ),
+        
+        tabPanel("PolyA length",
+                 h4("Another mean PolyA length per Barcode"),
+                 plotOutput("plot_6"),
+                 sliderInput("slider", "x-axis", min=0, max=100,
+                             value=c(0,100))),
+        tabPanel("polyA/polyU",
+                 plotOutput("plot_7"))
       ) #tabsetPanel
       ) #tabPanel
       ) #tabsetPanel
@@ -118,15 +139,35 @@ server <- function(input, output, session) {
   
   
   # Met a jour le path du dossier choisi.
-  observeEvent(ignoreNULL = TRUE, eventExpr = {input$dir},
+  observeEvent(ignoreNULL = TRUE,
+               eventExpr = {input$dir},
                handlerExpr = {
                  if (!"path" %in% names(dir())) return()
                  home <- normalizePath("~")
                  global$datapath <- file.path(home,
                                               paste(unlist(dir()$path[-1]),
-                                                    collapse = .Platform$file.sep))
+                                                    collapse = .Platform$file.sep)
+                                              )
                }) #observeEvent
 
+  
+  # PAS ENCORE UTILISE
+  barcode_correspondance <- reactive({
+    # Path du dossier contenant le fichier de correspondance des barcodes.
+    path_minus_4_Tail <- gsub("/4_Tail", "", global$datapath);
+    
+    # Stocke le fichier de correspondance des barcodes.
+    check_if_barcode_correspondance <- list.files(path=path_minus_4_Tail,
+                                                  pattern = ".tsv$");
+    
+    # Lis les génotypes associés aux barcodes.
+    barcode_correspondance <- fread(paste0(path_minus_4_Tail,
+                                           "/",
+                                           check_if_barcode_correspondance),
+                                    header=FALSE,
+                                    col.names=c("Barcodes", "Genotypes"));
+  }) #barcode_correspondance
+  
   
   # Actualise les checkboxes avec les noms des barcodes présents dans le dossier.
   observeEvent(
@@ -200,27 +241,61 @@ server <- function(input, output, session) {
   }) #reactiveIcon
   
   
-  reactive_list <- reactive({
-    list_file_split <-  strsplit(reactive_icon(), split = "$")
-  }) #reactiveList  
+  read_file <- reactive({
+    # Liste contenant les listes des freads des barcodes.
+    read_file <- lapply(reactive_icon(), fread) ; 
+    
+    # Liste contenant les noms complets des fichiers barcodes du dossier 
+    # ainsi que l'AGI.
+    list_short <- lapply(reactive_icon(), basename);
+    
+    # Liste contenant les numéros des barcodes (ex: barcode09), et les associe 
+    # a read_file.
+    liste_file_split_short <- gsub("\\..*", "", list_short) ;
+    names(read_file) <- liste_file_split_short;
+    
+    read_file <- read_file[lengths(read_file) != 0];
+  })
   
 
   # Renvoie une liste de dataframe des barcodes utilisés dans la recherche.
   reactive_read_file <- reactive ({
-    read_file <- lapply(reactive_icon(), fread) ; 
-    list_short <- lapply(reactive_icon(), basename);
-    liste_file_split_short <- gsub("\\..*", "", list_short) ;
-    names(read_file) <- liste_file_split_short;
+    
+    req(length(read_file())>0)
+    
+    # Liste contenant les listes des freads des barcodes.
+    #read_file <- lapply(reactive_icon(), fread) ; 
+    
+    # Liste contenant les noms complets des fichiers barcodes du dossier 
+    # ainsi que l'AGI.
+    #list_short <- lapply(reactive_icon(), basename);
+    
+    # Liste contenant les numéros des barcodes (ex: barcode09), et les associe 
+    # a read_file.
+    #liste_file_split_short <- gsub("\\..*", "", list_short) ;
+    #names(read_file) <- liste_file_split_short;
+  
+    #read_file <- read_file[lengths(read_file) != 0];
+    
+    #print(length(read_file));
+    #print(lengths(read_file));
+    
+    read_file <- read_file()
     
     csv_barcode <- gsub("_sorted.csv.gz", "", input$check_barcode[1]);
     colnames <- fread(paste0('head -n 1 ', global$datapath, "/",csv_barcode));
     
-    # Ajoute le header aux dataframes de la liste.
-    for(i in 1:length(read_file)) {
+
+    # Ajoute le header aux dataframes de la liste. <- TODO: CRASH QUAND UPDATE
+    for(i in 1:length(read_file())) {
       colnames(read_file[[i]]) <- names(colnames)
     };
-    return(read_file)
+      return(read_file)
+
   }) #reactiveReadFile
+  
+  
+
   
   
   # Renvoie le dataframe affiché en mergeant tous les dataframes recherchés, et
@@ -501,16 +576,6 @@ server <- function(input, output, session) {
   }) #output$plot2
   
   
-  # VERIFIE LES VALEURS DE LA VARIABLE.
-  observe({
-    assign(
-      x = "your_global_variable", 
-      value = reactive_df_add_tail(), 
-      envir = .GlobalEnv
-    )
-  })
-  
-  
   # Affiche le BoxPlot des bases nucléiques.
   output$plot_3 <- renderPlot({
     req(input$update_df)
@@ -531,14 +596,14 @@ server <- function(input, output, session) {
         incProgress(1/n, detail = paste("Doing part", i))
         
         # Making the plot.
-        p <- ggplot(reactive_df_add_tail(), aes("A", y=add_tail_pct_A)) +
+        p <- ggplot(reactive_df(), aes("A", y=add_tail_pct_A, color=Barcode)) +
           geom_boxplot() +
-          geom_boxplot(data=reactive_df_add_tail(), aes("T", y=add_tail_pct_T))+
-          geom_boxplot(data=reactive_df_add_tail(), aes("G", y=add_tail_pct_G))+
-          geom_boxplot(data=reactive_df_add_tail(), aes("C", y=add_tail_pct_C))+
+          geom_boxplot(data=reactive_df(), aes("T", y=add_tail_pct_T))+
+          geom_boxplot(data=reactive_df(), aes("G", y=add_tail_pct_G))+
+          geom_boxplot(data=reactive_df(), aes("C", y=add_tail_pct_C))+
           ylab("Percentage")+
           xlab("Base")+
-          labs(title=paste("n=", nrow(reactive_df_add_tail())))
+          labs(title=paste("n=", nrow(reactive_df())))
       }
     })
     p
@@ -573,7 +638,50 @@ server <- function(input, output, session) {
     p
   })
   
+  
+  output$plot_5 <- renderPlot({
+    req(input$update_df)
     
+    df_plot <- aggregate(reactive_df()$polya_length, by=list(Barcode=reactive_df()$Barcode), FUN=mean);
+    ggplot(df_plot, aes(x=Barcode, y=x, color=Barcode, fill=Barcode))+
+      geom_col()+
+      theme(legend.position="none")
+    })
+  
+  
+  observeEvent(input$update_df, {
+    
+    # Ordonne le dataframe selon les tailles de polyA décroissantes.
+    df_plotted <- reactive_df() %>%
+      arrange(-polya_length)
+    
+    # Stocke la plus grande valeur de polyA dans max_value
+    max_value <- df_plotted$polya_length[1]
+    
+    updateSliderInput(session, "slider", 
+                      min=0, max = max_value,
+                      value=c(0,max_value))
+  })
+  
+  
+  output$plot_6 <- renderPlot({
+    req(input$update_df)
+    
+    ggplot(reactive_df(), aes(polya_length, color=Barcode))+
+      geom_density()+
+      coord_cartesian(xlim=input$slider)
+  })
+  
+  
+  output$plot_7 <- renderPlot({
+    req(input$update_df)
+    
+    ggplot(reactive_selected_df(), aes(x=polya_end-polya_start, y=add_end-add_start, color=Barcode))+
+      geom_point()+
+      geom_line()
+  })
+
+
 } #server
   
 
