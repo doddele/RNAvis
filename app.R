@@ -121,7 +121,8 @@ ui <- dashboardPage(
         ),
         
         tabPanel("Genome coordinates",
-                 plotOutput("plot_1")
+                 plotOutput("plot_1"),
+                 plotOutput("plot_1bis")
                  ),
         
         tabPanel("5' position",
@@ -710,7 +711,7 @@ server <- function(input, output, session) {
       guides(fill="none")
   })
   
-  # Affiche le plot position extremité 3'.
+  # Affiche le plot coordonnées reads sur ARN.
   output$plot_1 <- renderPlot({
     req(input$update_df)
     
@@ -723,10 +724,34 @@ server <- function(input, output, session) {
       scale_fill_discrete(labels=c("Adapter",
                                    "Additional tail", 
                                    "Genome read", 
-                                   "PolyA tail"))
+                                   "PolyA tail")) +
+      labs(title=paste(input$AGI, "reading coordinates")) +
+      ylab("reads") +
+      xlab("RNA coordinates")
   }) #output$plot
   
   
+  output$plot_1bis <- renderPlot({
+    req(input$update_df)
+    
+    ggplot(reactive_df_plot(),
+           aes(xmin= start+genome_start_coord, xmax= end+genome_end_coord, 
+               ymin= read, ymax= read+0.8,
+               text=Barcode)) +
+      geom_rect(aes(fill=type)) +
+      facet_wrap(~ sense) +
+      labs(fill="Type") +
+      scale_fill_discrete(labels=c("Adapter",
+                                   "Additional tail", 
+                                   "Genome read", 
+                                   "PolyA tail")) +
+      labs(title=paste(input$AGI, "reading coordinates")) +
+      ylab("reads") +
+      xlab("RNA coordinates")
+  }) #output$plot
+  
+  
+  # Plot position 5'.
   output$plot_gen_start <- renderPlot({
     req(input$update_df)
     
@@ -740,11 +765,12 @@ server <- function(input, output, session) {
   })
   
   
+  # Plot position 3'.
   output$plot_1A <- renderPlot({
     req(input$update_df)
     
     ggplot(reactive_selected_df(), aes(genome_start_coord + gen_end, y=..count../sum(..count..), fill=Barcode)) +
-      geom_histogram() +
+      geom_bar() +
       facet_wrap(~ Barcode) +
       labs(title=paste("Percentage of reads based on 3' ends of AGI", input$AGI, ", n=", nrow(reactive_selected_df()))) +
       ylab("Percentage of reads") +
